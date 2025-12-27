@@ -23,17 +23,22 @@ export function useBitcoinPrice(): UseBitcoinPriceReturn {
       const fromDate = '2010-07-01';
       const toDate = new Date().toISOString().split('T')[0];
       const response = await fetch(`/api/bitcoin-price?from=${fromDate}&to=${toDate}`);
-      if (!response.ok) throw new Error('API request failed');
       const result = await response.json();
-      if (result.error) throw new Error(result.error);
+
+      // If API returns useCache flag or no prices, silently fall back to static data
+      if (result.useCache || !result.prices || result.prices.length === 0) {
+        loadStaticData();
+        return;
+      }
+
       const transformed = transformRawPrices(result.prices);
       const staticTransformed = transformRawPrices(staticData.prices);
       const merged = mergeHistoricalData(staticTransformed, transformed);
       setData(merged);
       setIsUsingFallback(false);
       setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err : new Error('Unknown error'));
+    } catch {
+      // Silently fall back to static data on any error
       loadStaticData();
     } finally {
       setIsLoading(false);
