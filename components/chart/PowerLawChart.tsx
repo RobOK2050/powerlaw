@@ -180,7 +180,7 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
             stroke="#22c55e"
             strokeWidth={2}
             dot={false}
-            connectNulls={false}
+            connectNulls={true}
             isAnimationActive={false}
           />
 
