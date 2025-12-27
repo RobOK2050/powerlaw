@@ -59,12 +59,12 @@ export function DateRangeSelector({ dateRange, onChange }: DateRangeSelectorProp
       <div className="flex items-center gap-3">
         <div className="flex-1">
           <label className="text-xs text-zinc-600 mb-1 block">Start Year</label>
-          <input type="number" min={2009} max={2100} value={dateRange.start.getFullYear()} onChange={handleStartYearChange} className="w-full rounded-lg border border-white/10 bg-zinc-800/50 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500" />
+          <input type="number" min={2009} max={2100} step={1} value={dateRange.start.getFullYear()} onChange={handleStartYearChange} className="w-full rounded-lg border border-white/10 bg-zinc-800/50 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
         </div>
         <div className="text-zinc-500 pt-5">to</div>
         <div className="flex-1">
           <label className="text-xs text-zinc-600 mb-1 block">End Year</label>
-          <input type="number" min={2009} max={2100} value={dateRange.end.getFullYear()} onChange={handleEndYearChange} className="w-full rounded-lg border border-white/10 bg-zinc-800/50 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500" />
+          <input type="number" min={2009} max={2100} step={1} value={dateRange.end.getFullYear()} onChange={handleEndYearChange} className="w-full rounded-lg border border-white/10 bg-zinc-800/50 px-3 py-2 text-sm text-white focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
         </div>
       </div>
       <p className="text-xs text-zinc-500">Showing {format(dateRange.start, 'MMM yyyy')} to {format(dateRange.end, 'MMM yyyy')}</p>
