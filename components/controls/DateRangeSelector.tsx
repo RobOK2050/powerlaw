@@ -57,13 +57,17 @@ function YearInput({
     }
   }, [inputValue, applyValue]);
 
-  const increment = useCallback(() => {
+  const increment = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
     const newYear = Math.min(value + 1, 2100);
+    setInputValue(newYear.toString());
     onChange(newYear);
   }, [value, onChange]);
 
-  const decrement = useCallback(() => {
+  const decrement = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
     const newYear = Math.max(value - 1, 2009);
+    setInputValue(newYear.toString());
     onChange(newYear);
   }, [value, onChange]);
 
@@ -72,8 +76,8 @@ function YearInput({
       <label className="text-xs text-zinc-600 mb-1 block">{label}</label>
       <div className="flex">
         <button
-          onClick={decrement}
-          className="rounded-l-lg border border-r-0 border-white/10 bg-zinc-700 px-2 py-2 text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors"
+          onMouseDown={decrement}
+          className="rounded-l-lg border border-r-0 border-white/10 bg-zinc-700 px-2 py-2 text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors select-none"
           type="button"
         >
           −
@@ -89,8 +93,8 @@ function YearInput({
           className="w-full border-y border-white/10 bg-zinc-800/50 px-3 py-2 text-sm text-white text-center focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
         />
         <button
-          onClick={increment}
-          className="rounded-r-lg border border-l-0 border-white/10 bg-zinc-700 px-2 py-2 text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors"
+          onMouseDown={increment}
+          className="rounded-r-lg border border-l-0 border-white/10 bg-zinc-700 px-2 py-2 text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors select-none"
           type="button"
         >
           +
