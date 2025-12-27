@@ -72,12 +72,27 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
   }, [isLogScale, yDomain]);
 
   const xTicks = useMemo(() => {
-    const years = new Set<string>();
-    data.forEach((d) => years.add(`${d.date.substring(0, 4)}-01-01`));
-    const yearArray = Array.from(years);
-    if (yearArray.length <= 15) return yearArray;
-    if (yearArray.length <= 30) return yearArray.filter((_, i) => i % 2 === 0);
-    return yearArray.filter((_, i) => i % 5 === 0);
+    if (data.length === 0) return [];
+    // Get unique years from the data
+    const yearsSet = new Set<number>();
+    data.forEach((d) => yearsSet.add(parseInt(d.date.substring(0, 4), 10)));
+    const years = Array.from(yearsSet).sort((a, b) => a - b);
+
+    // Determine tick interval based on year range
+    let tickYears: number[];
+    if (years.length <= 10) {
+      tickYears = years;
+    } else if (years.length <= 20) {
+      tickYears = years.filter((y) => y % 2 === 0 || y === years[0] || y === years[years.length - 1]);
+    } else {
+      tickYears = years.filter((y) => y % 5 === 0 || y === years[0] || y === years[years.length - 1]);
+    }
+
+    // Find first data point for each tick year
+    return tickYears.map((year) => {
+      const match = data.find((d) => d.date.startsWith(`${year}`));
+      return match?.date || `${year}-01-01`;
+    });
   }, [data]);
 
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -117,10 +132,12 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
             dataKey="date"
             tickFormatter={formatXAxis}
             ticks={xTicks}
+            interval={0}
             stroke="#71717a"
             tick={{ fill: '#71717a', fontSize: 11 }}
             tickLine={{ stroke: '#71717a' }}
             axisLine={{ stroke: 'rgba(255, 255, 255, 0.05)' }}
+            minTickGap={30}
           />
 
           <YAxis
