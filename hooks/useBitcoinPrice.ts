@@ -18,19 +18,19 @@ export function useBitcoinPrice(): UseBitcoinPriceReturn {
   const [error, setError] = useState<Error | null>(null);
   const [isUsingFallback, setIsUsingFallback] = useState(false);
 
-  const fetchCurrentPrice = useCallback(async (): Promise<HistoricalPricePoint | null> => {
+  const fetchRecentPrices = useCallback(async (): Promise<HistoricalPricePoint[]> => {
     try {
       const response = await fetch('/api/bitcoin-price/current');
-      if (!response.ok) return null;
+      if (!response.ok) return [];
       const result = await response.json();
-      if (result.error || !result.price) return null;
-      return {
-        date: result.date,
-        price: result.price,
-        daysSinceGenesis: calculateDaysSinceGenesis(result.date),
-      };
+      if (result.error || !result.prices || result.prices.length === 0) return [];
+      return result.prices.map((p: { date: string; price: number }) => ({
+        date: p.date,
+        price: p.price,
+        daysSinceGenesis: calculateDaysSinceGenesis(p.date),
+      }));
     } catch {
-      return null;
+      return [];
     }
   }, []);
 
@@ -38,12 +38,12 @@ export function useBitcoinPrice(): UseBitcoinPriceReturn {
     // Start with static data
     const staticTransformed = transformRawPrices(staticData.prices);
 
-    // Fetch today's current price
-    const currentPrice = await fetchCurrentPrice();
+    // Fetch last 30 days of daily prices
+    const recentPrices = await fetchRecentPrices();
 
-    // Merge current price if available
-    if (currentPrice) {
-      const merged = mergeHistoricalData(staticTransformed, [currentPrice]);
+    // Merge recent prices if available
+    if (recentPrices.length > 0) {
+      const merged = mergeHistoricalData(staticTransformed, recentPrices);
       setData(merged);
       setIsUsingFallback(false);
     } else {
@@ -52,7 +52,7 @@ export function useBitcoinPrice(): UseBitcoinPriceReturn {
     }
 
     setIsLoading(false);
-  }, [fetchCurrentPrice]);
+  }, [fetchRecentPrices]);
 
   const refetch = useCallback(() => {
     setIsLoading(true);
