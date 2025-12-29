@@ -2,8 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { transformRawPrices } from '@/lib/dataTransformers';
+import { GENESIS_BLOCK } from '@/lib/constants';
 import type { HistoricalPricePoint, UseBitcoinPriceReturn } from '@/types';
 import staticData from '@/data/bitcoin-historical.json';
+
+function calculateDaysSinceGenesis(dateStr: string): number {
+  const date = new Date(dateStr);
+  const diffMs = date.getTime() - GENESIS_BLOCK.getTime();
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
 
 export function useBitcoinPrice(): UseBitcoinPriceReturn {
   const [data, setData] = useState<HistoricalPricePoint[] | null>(null);
@@ -11,49 +18,50 @@ export function useBitcoinPrice(): UseBitcoinPriceReturn {
   const [error, setError] = useState<Error | null>(null);
   const [isUsingFallback, setIsUsingFallback] = useState(false);
 
-  const loadStaticData = useCallback(() => {
-    const transformed = transformRawPrices(staticData.prices);
-    setData(transformed);
-    setIsUsingFallback(true);
-    setIsLoading(false);
+  const fetchCurrentPrice = useCallback(async (): Promise<HistoricalPricePoint | null> => {
+    try {
+      const response = await fetch('/api/bitcoin-price/current');
+      if (!response.ok) return null;
+      const result = await response.json();
+      if (result.error || !result.price) return null;
+      return {
+        date: result.date,
+        price: result.price,
+        daysSinceGenesis: calculateDaysSinceGenesis(result.date),
+      };
+    } catch {
+      return null;
+    }
   }, []);
 
-  const fetchLiveData = useCallback(async () => {
-    try {
-      const fromDate = '2010-07-01';
-      const toDate = new Date().toISOString().split('T')[0];
-      const response = await fetch(`/api/bitcoin-price?from=${fromDate}&to=${toDate}`);
-      const result = await response.json();
+  const loadDataWithCurrentPrice = useCallback(async () => {
+    // Start with static data
+    const staticTransformed = transformRawPrices(staticData.prices);
 
-      // If API returns useCache flag or no prices, silently fall back to static data
-      if (result.useCache || !result.prices || result.prices.length === 0) {
-        loadStaticData();
-        return;
-      }
+    // Fetch today's current price
+    const currentPrice = await fetchCurrentPrice();
 
-      const transformed = transformRawPrices(result.prices);
-      const staticTransformed = transformRawPrices(staticData.prices);
-      const merged = mergeHistoricalData(staticTransformed, transformed);
+    // Merge current price if available
+    if (currentPrice) {
+      const merged = mergeHistoricalData(staticTransformed, [currentPrice]);
       setData(merged);
       setIsUsingFallback(false);
-      setError(null);
-    } catch {
-      // Silently fall back to static data on any error
-      loadStaticData();
-    } finally {
-      setIsLoading(false);
+    } else {
+      setData(staticTransformed);
+      setIsUsingFallback(true);
     }
-  }, [loadStaticData]);
+
+    setIsLoading(false);
+  }, [fetchCurrentPrice]);
 
   const refetch = useCallback(() => {
     setIsLoading(true);
-    fetchLiveData();
-  }, [fetchLiveData]);
+    loadDataWithCurrentPrice();
+  }, [loadDataWithCurrentPrice]);
 
   useEffect(() => {
-    loadStaticData();
-    fetchLiveData();
-  }, [loadStaticData, fetchLiveData]);
+    loadDataWithCurrentPrice();
+  }, [loadDataWithCurrentPrice]);
 
   return { data, isLoading, error, isUsingFallback, refetch };
 }
