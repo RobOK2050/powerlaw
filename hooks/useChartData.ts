@@ -20,7 +20,7 @@ export function useChartData({ exponent = DEFAULT_EXPONENT, coefficient = DEFAUL
 
   const chartData = useMemo(() => {
     const powerLawData = generatePowerLawData(dateRange.start, dateRange.end, coefficient, exponent);
-    const mergedData = mergeDataForChart(powerLawData, historicalPrices ?? []);
+    const mergedData = mergeDataForChart(powerLawData, historicalPrices ?? [], coefficient, exponent);
     return sampleDataPoints(mergedData, MAX_CHART_POINTS);
   }, [dateRange, coefficient, exponent, historicalPrices]);
 

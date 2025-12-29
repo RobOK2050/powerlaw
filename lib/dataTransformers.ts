@@ -1,5 +1,5 @@
-import { format, parseISO } from 'date-fns';
-import { daysSinceGenesis } from './powerLaw';
+import { format, parseISO, subDays, isAfter, startOfDay } from 'date-fns';
+import { daysSinceGenesis, calculatePowerLawPrice, calculateSupportPrice, calculateResistancePrice } from './powerLaw';
 import type { HistoricalPricePoint, ChartDataPoint, PowerLawDataPoint } from '@/types';
 
 export function transformRawPrices(prices: Array<{ date: string; price: number }>): HistoricalPricePoint[] {
@@ -18,29 +18,81 @@ export function createPriceMap(prices: HistoricalPricePoint[]): Map<string, numb
 
 export function mergeDataForChart(
   powerLawData: PowerLawDataPoint[],
-  historicalPrices: HistoricalPricePoint[]
+  historicalPrices: HistoricalPricePoint[],
+  coefficient?: number,
+  exponent?: number
 ): ChartDataPoint[] {
   const priceMap = createPriceMap(historicalPrices);
-  const today = new Date();
+  const today = startOfDay(new Date());
+  const thirtyDaysAgo = subDays(today, 30);
 
-  return powerLawData.map((point) => {
-    const dateStr = format(point.date, 'yyyy-MM-dd');
-    let actualPrice: number | null = null;
-    if (point.date <= today) {
-      actualPrice = priceMap.get(dateStr) ?? findNearestPrice(dateStr, priceMap);
+  // Build base chart data from power law data (excludes last 30 days)
+  const baseData: ChartDataPoint[] = powerLawData
+    .filter((point) => !isAfter(startOfDay(point.date), thirtyDaysAgo))
+    .map((point) => {
+      const dateStr = format(point.date, 'yyyy-MM-dd');
+      const actualPrice = priceMap.get(dateStr) ?? findNearestPrice(dateStr, priceMap);
+      return {
+        date: dateStr,
+        timestamp: point.timestamp,
+        days: point.days,
+        fairPrice: point.fairPrice,
+        supportPrice: point.supportPrice,
+        resistancePrice: point.resistancePrice,
+        bandBase: point.supportPrice,
+        bandWidth: point.resistancePrice - point.supportPrice,
+        actualPrice,
+      };
+    });
+
+  // Add daily data points for last 30 days
+  const dailyData: ChartDataPoint[] = [];
+  const coef = coefficient ?? 1.0117e-17;
+  const exp = exponent ?? 5.82;
+
+  for (let i = 30; i >= 0; i--) {
+    const date = subDays(today, i);
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const days = daysSinceGenesis(date);
+    const fairPrice = calculatePowerLawPrice(days, coef, exp);
+    const actualPrice = priceMap.get(dateStr) ?? null;
+
+    // Only add if we have actual price data for this day
+    if (actualPrice !== null) {
+      dailyData.push({
+        date: dateStr,
+        timestamp: date.getTime(),
+        days,
+        fairPrice,
+        supportPrice: calculateSupportPrice(fairPrice),
+        resistancePrice: calculateResistancePrice(fairPrice),
+        bandBase: calculateSupportPrice(fairPrice),
+        bandWidth: calculateResistancePrice(fairPrice) - calculateSupportPrice(fairPrice),
+        actualPrice,
+      });
     }
-    return {
-      date: dateStr,
-      timestamp: point.timestamp,
-      days: point.days,
-      fairPrice: point.fairPrice,
-      supportPrice: point.supportPrice,
-      resistancePrice: point.resistancePrice,
-      bandBase: point.supportPrice,
-      bandWidth: point.resistancePrice - point.supportPrice,
-      actualPrice,
-    };
-  });
+  }
+
+  // Add future data points (after today)
+  const futureData: ChartDataPoint[] = powerLawData
+    .filter((point) => isAfter(startOfDay(point.date), today))
+    .map((point) => {
+      const dateStr = format(point.date, 'yyyy-MM-dd');
+      return {
+        date: dateStr,
+        timestamp: point.timestamp,
+        days: point.days,
+        fairPrice: point.fairPrice,
+        supportPrice: point.supportPrice,
+        resistancePrice: point.resistancePrice,
+        bandBase: point.supportPrice,
+        bandWidth: point.resistancePrice - point.supportPrice,
+        actualPrice: null,
+      };
+    });
+
+  // Combine and sort by date
+  return [...baseData, ...dailyData, ...futureData].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function findNearestPrice(dateStr: string, priceMap: Map<string, number>): number | null {
