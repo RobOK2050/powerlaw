@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { format, addYears } from 'date-fns';
 import { GENESIS_BLOCK, DEFAULT_END_DATE } from '@/lib/constants';
 import type { DateRange } from '@/types';
@@ -31,7 +31,17 @@ function YearInput({
 }) {
   const [inputValue, setInputValue] = useState(value.toString());
 
-  // Sync with external value changes (from presets)
+  // Use refs to avoid stale closures in callbacks
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+
+  // Keep refs in sync
+  useEffect(() => {
+    valueRef.current = value;
+    onChangeRef.current = onChange;
+  });
+
+  // Sync input display with external value changes (from presets)
   useEffect(() => {
     setInputValue(value.toString());
   }, [value]);
@@ -39,12 +49,12 @@ function YearInput({
   const applyValue = useCallback((val: string) => {
     const year = parseInt(val, 10);
     if (!isNaN(year) && year >= 2009 && year <= 2100) {
-      onChange(year);
+      onChangeRef.current(year);
     } else {
       // Reset to current valid value
-      setInputValue(value.toString());
+      setInputValue(valueRef.current.toString());
     }
-  }, [onChange, value]);
+  }, []);
 
   const handleBlur = useCallback(() => {
     applyValue(inputValue);
@@ -57,26 +67,22 @@ function YearInput({
     }
   }, [inputValue, applyValue]);
 
-  const increment = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const newYear = Math.min(value + 1, 2100);
-    setInputValue(newYear.toString());
-    onChange(newYear);
-  }, [value, onChange]);
+  const increment = useCallback(() => {
+    const newYear = Math.min(valueRef.current + 1, 2100);
+    onChangeRef.current(newYear);
+  }, []);
 
-  const decrement = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const newYear = Math.max(value - 1, 2009);
-    setInputValue(newYear.toString());
-    onChange(newYear);
-  }, [value, onChange]);
+  const decrement = useCallback(() => {
+    const newYear = Math.max(valueRef.current - 1, 2009);
+    onChangeRef.current(newYear);
+  }, []);
 
   return (
     <div className="flex-1">
       <label className="text-xs text-zinc-600 mb-1 block">{label}</label>
       <div className="flex">
         <button
-          onMouseDown={decrement}
+          onClick={decrement}
           className="rounded-l-lg border border-r-0 border-white/10 bg-zinc-700 px-2 py-2 text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors select-none"
           type="button"
         >
@@ -93,7 +99,7 @@ function YearInput({
           className="w-full border-y border-white/10 bg-zinc-800/50 px-3 py-2 text-sm text-white text-center focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
         />
         <button
-          onMouseDown={increment}
+          onClick={increment}
           className="rounded-r-lg border border-l-0 border-white/10 bg-zinc-700 px-2 py-2 text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors select-none"
           type="button"
         >
