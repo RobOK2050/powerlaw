@@ -10,8 +10,8 @@ export const SUPPORT_MULTIPLIER = 0.42;
 export const RESISTANCE_MULTIPLIER = 2.4;
 
 // Date range defaults
-export const DEFAULT_START_DATE = GENESIS_BLOCK;
-export const DEFAULT_END_DATE = new Date('2040-12-31T00:00:00Z');
+export const DEFAULT_START_DATE = new Date('2020-01-01T00:00:00Z');
+export const DEFAULT_END_DATE = new Date('2030-12-31T00:00:00Z');
 
 // Slider ranges
 export const EXPONENT_MIN = 4.0;
