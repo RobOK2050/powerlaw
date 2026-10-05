@@ -1,6 +1,6 @@
 'use client';
 
-import { format, parseISO } from 'date-fns';
+import { formatDate, utcDay } from '@/lib/dates';
 import { formatPrice, calculateDeviation } from '@/lib/powerLaw';
 
 interface TooltipPayload {
@@ -21,14 +21,14 @@ export function ChartTooltip({ active, payload }: ChartTooltipProps) {
   if (!active || !payload || payload.length === 0) return null;
 
   const data = payload[0].payload;
-  const date = parseISO(data.date);
+  const date = new Date(`${data.date}T00:00:00Z`);
   const isHistorical = data.actualPrice !== null;
   const deviation = isHistorical ? calculateDeviation(data.actualPrice!, data.fairPrice) : null;
 
   return (
     <div className="rounded-xl border border-white/10 bg-zinc-900/95 p-4 shadow-2xl backdrop-blur-sm">
       <div className="mb-3 border-b border-white/5 pb-2">
-        <div className="text-sm font-medium text-white">{format(date, 'MMMM d, yyyy')}</div>
+        <div className="text-sm font-medium text-white">{formatDate(date, { month: 'long', day: 'numeric' })}</div>
         <div className="text-xs text-zinc-500">Day {data.days.toLocaleString()} since Genesis</div>
       </div>
       <div className="space-y-2">
@@ -63,7 +63,7 @@ export function ChartTooltip({ active, payload }: ChartTooltipProps) {
       )}
       {!isHistorical && (
         <div className="mt-3 border-t border-white/5 pt-3">
-          <div className="text-xs text-zinc-500 italic">Projected future value</div>
+          <div className="text-xs text-zinc-500 italic">{date > utcDay() ? 'Projected future value' : 'No price observation for this date'}</div>
         </div>
       )}
     </div>

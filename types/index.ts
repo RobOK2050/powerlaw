@@ -14,9 +14,17 @@ export interface PowerLawDataPoint {
 }
 
 // Historical Bitcoin price data
-export interface HistoricalPricePoint {
+export interface PricePoint {
   date: string;
   price: number;
+}
+
+export interface PriceQuote {
+  price: number;
+  observedAt: string;
+}
+
+export interface HistoricalPricePoint extends PricePoint {
   daysSinceGenesis: number;
 }
 
@@ -57,17 +65,23 @@ export interface AppState {
 
 // Hook return types
 export interface UseBitcoinPriceReturn {
-  data: HistoricalPricePoint[] | null;
+  data: PricePoint[];
+  quote: PriceQuote | null;
   isLoading: boolean;
-  error: Error | null;
+  error: string | null;
   isUsingFallback: boolean;
   refetch: () => void;
+  now: number;
 }
 
 export interface UseChartDataReturn {
   chartData: ChartDataPoint[];
   isLoading: boolean;
-  error: Error | null;
+  error: string | null;
   currentPrice: number | null;
   currentFairPrice: number;
+  observedAt: string | null;
+  isStale: boolean;
+  isUsingFallback: boolean;
+  refetch: () => void;
 }

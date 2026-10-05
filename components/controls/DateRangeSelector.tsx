@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
-import { format, addYears } from 'date-fns';
-import { GENESIS_BLOCK, DEFAULT_END_DATE } from '@/lib/constants';
+import { useId, useState } from 'react';
+import { changeRangeYear, formatDate, PRESET_LABELS, presetRange, type PresetKey } from '@/lib/dates';
 import type { DateRange } from '@/types';
 
 interface DateRangeSelectorProps {
@@ -10,175 +9,73 @@ interface DateRangeSelectorProps {
   onChange: (range: DateRange) => void;
 }
 
-type PresetKey = 'all' | '2020+' | 'last5' | 'next10' | 'future';
-
-const PRESETS: Record<PresetKey, { label: string; getRange: () => DateRange }> = {
-  all: { label: 'All Time', getRange: () => ({ start: GENESIS_BLOCK, end: DEFAULT_END_DATE }) },
-  '2020+': { label: '2020+', getRange: () => ({ start: new Date('2020-01-01'), end: DEFAULT_END_DATE }) },
-  last5: { label: 'Last 5 Years', getRange: () => ({ start: addYears(new Date(), -5), end: addYears(new Date(), 5) }) },
-  next10: { label: 'Next 10 Years', getRange: () => ({ start: new Date(), end: addYears(new Date(), 10) }) },
-  future: { label: '2030-2040', getRange: () => ({ start: new Date('2030-01-01'), end: new Date('2040-12-31') }) },
-};
-
-function YearInput({
-  label,
-  year,
-  min,
-  max,
-  onYearChange
-}: {
-  label: string;
-  year: number;
-  min: number;
-  max: number;
-  onYearChange: (year: number) => void;
+function YearInput({ label, year, min, max, onYearChange }: {
+  label: string; year: number; min: number; max: number; onYearChange: (year: number) => void;
 }) {
-  const [inputValue, setInputValue] = useState(year.toString());
-  const [isFocused, setIsFocused] = useState(false);
-
-  // Sync display when year prop changes (but not while user is typing)
-  useEffect(() => {
-    if (!isFocused) {
-      setInputValue(year.toString());
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [validation, setValidation] = useState<{ key: string; message: string } | null>(null);
+  const validationKey = `${year}:${min}:${max}`;
+  const error = validation?.key === validationKey ? validation.message : '';
+  const clearError = () => setValidation(null);
+  const commit = () => {
+    if (draft !== null) {
+      const parsed = Number(draft);
+      if (/^\d{4}$/.test(draft) && parsed >= min && parsed <= max) {
+        onYearChange(parsed);
+        clearError();
+      } else setValidation({ key: validationKey, message: `Enter a year from ${min} to ${max}.` });
     }
-  }, [year, isFocused]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value);
+    setDraft(null);
   };
-
-  const handleBlur = () => {
-    setIsFocused(false);
-    const parsed = parseInt(inputValue, 10);
-    if (!isNaN(parsed) && parsed >= min && parsed <= max) {
-      onYearChange(parsed);
-    } else {
-      setInputValue(year.toString());
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      (e.target as HTMLInputElement).blur();
-    }
-  };
-
-  const handleIncrement = () => {
-    const newYear = Math.min(year + 1, max);
-    onYearChange(newYear);
-  };
-
-  const handleDecrement = () => {
-    const newYear = Math.max(year - 1, min);
-    onYearChange(newYear);
-  };
-
   return (
-    <div className="flex-1">
-      <label className="text-xs text-zinc-600 mb-1 block">{label}</label>
+    <div className="min-w-0 flex-1">
+      <label htmlFor={id} className="mb-1 block text-xs text-zinc-400">{label}</label>
       <div className="flex">
-        <button
-          type="button"
-          onClick={handleDecrement}
-          className="rounded-l-lg border border-r-0 border-white/10 bg-zinc-700 px-2 py-2 text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors select-none"
-        >
-          −
-        </button>
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          value={inputValue}
-          onChange={handleInputChange}
-          onFocus={() => setIsFocused(true)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          className="w-full border-y border-white/10 bg-zinc-800/50 px-3 py-2 text-sm text-white text-center focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-        />
-        <button
-          type="button"
-          onClick={handleIncrement}
-          className="rounded-r-lg border border-l-0 border-white/10 bg-zinc-700 px-2 py-2 text-zinc-400 hover:bg-zinc-600 hover:text-white transition-colors select-none"
-        >
-          +
-        </button>
+        <button type="button" aria-label={`Decrease ${label.toLowerCase()}`} disabled={year <= min}
+          onClick={() => { clearError(); onYearChange(year - 1); }}
+          className="rounded-l-lg border border-white/10 bg-zinc-700 px-2 py-2 text-zinc-300 disabled:opacity-30">−</button>
+        <input id={id} type="text" inputMode="numeric" pattern="[0-9]*" value={draft ?? year.toString()}
+          aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined}
+          onChange={(event) => setDraft(event.target.value)} onBlur={commit}
+          onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); if (event.key === 'Escape') { setDraft(null); clearError(); } }}
+          className="min-w-0 w-full border-y border-white/10 bg-zinc-800/50 px-1 py-2 text-center text-sm text-white focus:outline-orange-500" />
+        <button type="button" aria-label={`Increase ${label.toLowerCase()}`} disabled={year >= max}
+          onClick={() => { clearError(); onYearChange(year + 1); }}
+          className="rounded-r-lg border border-white/10 bg-zinc-700 px-2 py-2 text-zinc-300 disabled:opacity-30">+</button>
       </div>
+      {error && <p id={`${id}-error`} role="alert" className="mt-1 text-xs text-amber-400">{error}</p>}
     </div>
   );
 }
 
 export function DateRangeSelector({ dateRange, onChange }: DateRangeSelectorProps) {
-  // Local state for years - this is the source of truth while editing
-  const [startYear, setStartYear] = useState(dateRange.start.getFullYear());
-  const [endYear, setEndYear] = useState(dateRange.end.getFullYear());
-
-  // Sync local state when dateRange prop changes (e.g., from presets)
-  useEffect(() => {
-    setStartYear(dateRange.start.getFullYear());
-    setEndYear(dateRange.end.getFullYear());
-  }, [dateRange]);
-
-  // Update parent when local years change
-  const handleStartYearChange = (year: number) => {
-    setStartYear(year);
-    onChange({
-      start: new Date(`${year}-01-01`),
-      end: dateRange.end
-    });
-  };
-
-  const handleEndYearChange = (year: number) => {
-    setEndYear(year);
-    onChange({
-      start: dateRange.start,
-      end: new Date(`${year}-12-31`)
-    });
-  };
-
-  const handlePresetClick = (key: PresetKey) => {
-    onChange(PRESETS[key].getRange());
-  };
-
-  const activePreset = useMemo(() => {
-    if (startYear === 2009 && endYear === 2040) return 'all';
-    if (startYear === 2020 && endYear === 2040) return '2020+';
-    if (startYear === 2030 && endYear === 2040) return 'future';
-    return null;
-  }, [startYear, endYear]);
-
+  const startYear = dateRange.start.getUTCFullYear();
+  const endYear = dateRange.end.getUTCFullYear();
+  const now = new Date();
+  const activePreset = (Object.keys(PRESET_LABELS) as PresetKey[]).find((key) => {
+    const range = presetRange(key, now);
+    return range.start.getTime() === dateRange.start.getTime() && range.end.getTime() === dateRange.end.getTime();
+  });
   return (
-    <div className="space-y-3">
-      <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">Date Range</label>
+    <fieldset className="space-y-3">
+      <legend className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-400">Date Range</legend>
       <div className="flex flex-wrap gap-2">
-        {Object.entries(PRESETS).map(([key, preset]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => handlePresetClick(key as PresetKey)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${activePreset === key ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/25' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white border border-white/5'}`}
-          >
-            {preset.label}
+        {(Object.entries(PRESET_LABELS) as [PresetKey, string][]).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => onChange(presetRange(key))} aria-pressed={activePreset === key}
+            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${activePreset === key ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/25' : 'border border-white/5 bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'}`}>
+            {label}
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-3">
-        <YearInput
-          label="Start Year"
-          year={startYear}
-          min={2009}
-          max={2100}
-          onYearChange={handleStartYearChange}
-        />
-        <div className="text-zinc-500 pt-5">to</div>
-        <YearInput
-          label="End Year"
-          year={endYear}
-          min={2009}
-          max={2100}
-          onYearChange={handleEndYearChange}
-        />
+      <div className="flex items-start gap-2">
+        <YearInput label="Start Year" year={startYear} min={2009} max={endYear}
+          onYearChange={(year) => onChange(changeRangeYear(dateRange, 'start', year))} />
+        <div className="pt-7 text-zinc-500">to</div>
+        <YearInput label="End Year" year={endYear} min={startYear} max={2100}
+          onYearChange={(year) => onChange(changeRangeYear(dateRange, 'end', year))} />
       </div>
-      <p className="text-xs text-zinc-500">Showing {format(dateRange.start, 'MMM yyyy')} to {format(dateRange.end, 'MMM yyyy')}</p>
-    </div>
+      <p className="text-xs text-zinc-400">Showing {formatDate(dateRange.start)} to {formatDate(dateRange.end)} (UTC)</p>
+    </fieldset>
   );
 }

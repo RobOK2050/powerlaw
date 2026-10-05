@@ -6,6 +6,7 @@ import { ControlPanel } from '@/components/controls/ControlPanel';
 import { useChartData } from '@/hooks/useChartData';
 import { useBitcoinPrice } from '@/hooks/useBitcoinPrice';
 import { formatPrice, calculateDeviation } from '@/lib/powerLaw';
+import { formatDate } from '@/lib/dates';
 import { DEFAULT_EXPONENT, DEFAULT_COEFFICIENT, DEFAULT_START_DATE, DEFAULT_END_DATE } from '@/lib/constants';
 import type { DateRange } from '@/types';
 
@@ -15,13 +16,13 @@ export default function Home() {
   const [isLogScale, setIsLogScale] = useState(true);
   const [dateRange, setDateRange] = useState<DateRange>({ start: DEFAULT_START_DATE, end: DEFAULT_END_DATE });
 
-  const { isUsingFallback } = useBitcoinPrice();
-  const { chartData, isLoading, currentPrice, currentFairPrice } = useChartData({ exponent, coefficient, dateRange });
+  const prices = useBitcoinPrice();
+  const { chartData, isLoading, currentPrice, currentFairPrice, observedAt, isStale, isUsingFallback, error, refetch } = useChartData({ exponent, coefficient, dateRange, prices });
 
   const handleScaleToggle = useCallback(() => setIsLogScale((prev) => !prev), []);
   const handleDateRangeChange = useCallback((range: DateRange) => setDateRange(range), []);
 
-  const deviation = useMemo(() => currentPrice ? calculateDeviation(currentPrice, currentFairPrice) : null, [currentPrice, currentFairPrice]);
+  const deviation = useMemo(() => !isStale && currentPrice ? calculateDeviation(currentPrice, currentFairPrice) : null, [currentPrice, currentFairPrice, isStale]);
 
   const pricePosition = useMemo(() => {
     if (deviation === null) return null;
@@ -43,11 +44,12 @@ export default function Home() {
               </h1>
               <p className="mt-1 text-sm text-zinc-500">Price model by Giovanni Santostasi</p>
             </div>
-            {currentPrice && (
+            {prices.now > 0 && currentPrice !== null && (
               <div className="flex items-center gap-4">
                 <div className="rounded-xl border border-white/10 bg-[var(--bg-card)] px-4 py-2">
-                  <div className="text-xs text-zinc-500">Current BTC Price</div>
+                  <div className="text-xs text-zinc-500">{isStale ? 'Last available BTC price' : 'Current BTC Price'}</div>
                   <div className="font-mono text-lg font-semibold text-green-400">{formatPrice(currentPrice)}</div>
+                  {observedAt && <div className="text-xs text-zinc-400">As of {formatDate(new Date(observedAt), { day: 'numeric', hour: '2-digit', minute: '2-digit' })} UTC{isStale ? ' · stale' : ''}</div>}
                 </div>
                 <div className="rounded-xl border border-white/10 bg-[var(--bg-card)] px-4 py-2">
                   <div className="text-xs text-zinc-500">Fair Value</div>
@@ -69,12 +71,16 @@ export default function Home() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-400" role="status" aria-live="polite">
+          <span>{isLoading ? 'Refreshing daily history and quote…' : error ?? (isStale ? 'Showing the last available observation. Live pricing is stale.' : 'Prices refresh every 5 minutes. Daily history is saved in this browser.')}</span>
+          <button type="button" onClick={refetch} disabled={isLoading} className="rounded border border-white/10 px-3 py-2 hover:text-white disabled:opacity-40">Refresh prices</button>
+        </div>
         <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
           <div className="order-2 lg:order-1">
             <PowerLawChart data={chartData} isLogScale={isLogScale} isLoading={isLoading} />
           </div>
           <div className="order-1 lg:order-2">
-            <ControlPanel exponent={exponent} onExponentChange={setExponent} isLogScale={isLogScale} onScaleToggle={handleScaleToggle} dateRange={dateRange} onDateRangeChange={handleDateRangeChange} isUsingFallback={isUsingFallback} />
+            <ControlPanel now={prices.now} exponent={exponent} onExponentChange={setExponent} isLogScale={isLogScale} onScaleToggle={handleScaleToggle} dateRange={dateRange} onDateRangeChange={handleDateRangeChange} isUsingFallback={isUsingFallback || isStale} />
           </div>
         </div>
 

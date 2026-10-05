@@ -1,4 +1,4 @@
-import { differenceInDays, addDays, format } from 'date-fns';
+import { DAY_MS, dateKey, isValidRange, utcDay } from './dates';
 import {
   GENESIS_BLOCK,
   DEFAULT_COEFFICIENT,
@@ -10,7 +10,7 @@ import {
 import type { PowerLawDataPoint, ChartDataPoint } from '@/types';
 
 export function daysSinceGenesis(date: Date): number {
-  return Math.max(0, differenceInDays(date, GENESIS_BLOCK));
+  return Math.max(0, Math.floor((utcDay(date).getTime() - GENESIS_BLOCK.getTime()) / DAY_MS));
 }
 
 export function calculatePowerLawPrice(
@@ -31,7 +31,7 @@ export function calculateResistancePrice(fairPrice: number, multiplier: number =
 }
 
 export function calculateOptimalInterval(startDate: Date, endDate: Date): number {
-  const daysDiff = differenceInDays(endDate, startDate);
+  const daysDiff = (endDate.getTime() - startDate.getTime()) / DAY_MS;
   if (daysDiff > INTERVAL_THRESHOLDS.MONTHLY) return 30;
   if (daysDiff > INTERVAL_THRESHOLDS.BIWEEKLY) return 14;
   if (daysDiff > INTERVAL_THRESHOLDS.WEEKLY) return 7;
@@ -47,8 +47,10 @@ export function generatePowerLawData(
   intervalDays?: number
 ): PowerLawDataPoint[] {
   const data: PowerLawDataPoint[] = [];
+  if (!isValidRange({ start: startDate, end: endDate })) return data;
   const interval = intervalDays ?? calculateOptimalInterval(startDate, endDate);
-  let currentDate = new Date(startDate);
+  if (!Number.isFinite(interval) || interval < 1) return data;
+  let currentDate = utcDay(startDate);
 
   while (currentDate <= endDate) {
     const days = daysSinceGenesis(currentDate);
@@ -63,7 +65,7 @@ export function generatePowerLawData(
         resistancePrice: calculateResistancePrice(fairPrice),
       });
     }
-    currentDate = addDays(currentDate, interval);
+    currentDate = new Date(currentDate.getTime() + interval * DAY_MS);
   }
 
   // Include end date
@@ -90,7 +92,7 @@ export function toChartData(
   historicalPrices: Map<string, number> = new Map()
 ): ChartDataPoint[] {
   return powerLawData.map((point) => {
-    const dateStr = format(point.date, 'yyyy-MM-dd');
+    const dateStr = dateKey(point.date);
     const actualPrice = historicalPrices.get(dateStr) ?? null;
     return {
       date: dateStr,

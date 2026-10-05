@@ -13,9 +13,10 @@ interface ControlPanelProps {
   dateRange: DateRange;
   onDateRangeChange: (range: DateRange) => void;
   isUsingFallback?: boolean;
+  now: number;
 }
 
-export function ControlPanel({ exponent, onExponentChange, isLogScale, onScaleToggle, dateRange, onDateRangeChange, isUsingFallback }: ControlPanelProps) {
+export function ControlPanel({ exponent, onExponentChange, isLogScale, onScaleToggle, dateRange, onDateRangeChange, isUsingFallback, now }: ControlPanelProps) {
   return (
     <div className="control-panel space-y-6">
       <div className="flex items-center justify-between">
@@ -28,7 +29,7 @@ export function ControlPanel({ exponent, onExponentChange, isLogScale, onScaleTo
         )}
       </div>
       <div className="space-y-6">
-        <ExponentSlider value={exponent} onChange={onExponentChange} />
+        <ExponentSlider now={now} value={exponent} onChange={onExponentChange} />
         <div className="border-t border-white/5 pt-6"><ScaleToggle isLogScale={isLogScale} onToggle={onScaleToggle} /></div>
         <div className="border-t border-white/5 pt-6"><DateRangeSelector dateRange={dateRange} onChange={onDateRangeChange} /></div>
       </div>

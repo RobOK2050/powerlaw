@@ -60,7 +60,7 @@ input[type="range"] {
   width: 100%;
 }
 
-input[type="range"]::-webkit-slider-track {
+input[type="range"]::-webkit-slider-runnable-track {
   background: var(--slider-track);
   height: 6px;
   border-radius: 3px;

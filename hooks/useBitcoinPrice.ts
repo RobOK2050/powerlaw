@@ -1,74 +1,58 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { transformRawPrices } from '@/lib/dataTransformers';
-import { GENESIS_BLOCK } from '@/lib/constants';
-import type { HistoricalPricePoint, UseBitcoinPriceReturn } from '@/types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { mergeHistoricalData } from '@/lib/dataTransformers';
+import { readCache, saveCache, refreshPrices, REFRESH_MS, type PriceCache } from '@/lib/priceCache';
+import type { UseBitcoinPriceReturn } from '@/types';
 import staticData from '@/data/bitcoin-historical.json';
 
-function calculateDaysSinceGenesis(dateStr: string): number {
-  const date = new Date(dateStr);
-  const diffMs = date.getTime() - GENESIS_BLOCK.getTime();
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
-}
+const initialCache: PriceCache = { version: 1, prices: staticData.prices, quote: null };
 
 export function useBitcoinPrice(): UseBitcoinPriceReturn {
-  const [data, setData] = useState<HistoricalPricePoint[] | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const [isUsingFallback, setIsUsingFallback] = useState(false);
-
-  const fetchRecentPrices = useCallback(async (): Promise<HistoricalPricePoint[]> => {
-    try {
-      const response = await fetch('/api/bitcoin-price/current');
-      if (!response.ok) return [];
-      const result = await response.json();
-      if (result.error || !result.prices || result.prices.length === 0) return [];
-      return result.prices.map((p: { date: string; price: number }) => ({
-        date: p.date,
-        price: p.price,
-        daysSinceGenesis: calculateDaysSinceGenesis(p.date),
-      }));
-    } catch {
-      return [];
-    }
-  }, []);
-
-  const loadDataWithCurrentPrice = useCallback(async () => {
-    // Start with static data
-    const staticTransformed = transformRawPrices(staticData.prices);
-
-    // Fetch last 30 days of daily prices
-    const recentPrices = await fetchRecentPrices();
-
-    // Merge recent prices if available
-    if (recentPrices.length > 0) {
-      const merged = mergeHistoricalData(staticTransformed, recentPrices);
-      setData(merged);
-      setIsUsingFallback(false);
-    } else {
-      setData(staticTransformed);
-      setIsUsingFallback(true);
-    }
-
-    setIsLoading(false);
-  }, [fetchRecentPrices]);
-
-  const refetch = useCallback(() => {
-    setIsLoading(true);
-    loadDataWithCurrentPrice();
-  }, [loadDataWithCurrentPrice]);
+  const [state, setState] = useState({ cache: initialCache, isLoading: true, error: null as string | null, isUsingFallback: true, now: 0 });
+  const refreshRef = useRef<() => void>(() => {});
+  const refetch = useCallback(() => refreshRef.current(), []);
 
   useEffect(() => {
-    loadDataWithCurrentPrice();
-  }, [loadDataWithCurrentPrice]);
+    const controller = new AbortController();
+    let cache = initialCache;
+    let running = false;
+    const refresh = async () => {
+      if (running || controller.signal.aborted) return;
+      running = true;
+      const now = new Date();
+      // Defers initial state updates until after the effect, including cached data.
+      await Promise.resolve();
+      if (controller.signal.aborted) return;
+      setState((s) => ({ ...s, cache, isLoading: true, now: now.getTime() }));
+      try {
+        const result = await refreshPrices(cache, controller.signal, now);
+        if (controller.signal.aborted) return;
+        cache = result.cache;
+        try { saveCache(window.localStorage, cache); } catch { /* Storage may be unavailable. */ }
+        setState({ ...result, isLoading: false, now: Date.now() });
+      } catch {
+        if (!controller.signal.aborted) setState((s) => ({ ...s, isLoading: false, isUsingFallback: true,
+          error: 'Prices could not be refreshed. Saved observations are still shown.', now: Date.now() }));
+      } finally { running = false; }
+    };
+    try {
+      const saved = readCache(window.localStorage);
+      if (saved) cache = { ...saved, prices: mergeHistoricalData(initialCache.prices, saved.prices) };
+    } catch { /* Use the bundled snapshot when browser storage is blocked. */ }
+    refreshRef.current = () => { void refresh(); };
+    void refresh();
+    const timer = setInterval(() => { void refresh(); }, REFRESH_MS);
+    const onFocus = () => { void refresh(); };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      refreshRef.current = () => {};
+    };
+  }, []);
 
-  return { data, isLoading, error, isUsingFallback, refetch };
-}
-
-function mergeHistoricalData(staticData: HistoricalPricePoint[], liveData: HistoricalPricePoint[]): HistoricalPricePoint[] {
-  const dateMap = new Map<string, HistoricalPricePoint>();
-  staticData.forEach((point) => dateMap.set(point.date, point));
-  liveData.forEach((point) => dateMap.set(point.date, point));
-  return Array.from(dateMap.values()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  return { data: state.cache.prices, quote: state.cache.quote, isLoading: state.isLoading, error: state.error,
+    isUsingFallback: state.isUsingFallback, refetch, now: state.now };
 }

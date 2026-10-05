@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import { format, parseISO } from 'date-fns';
+import { formatDate, utcDay } from '@/lib/dates';
 import { ChartTooltip } from './ChartTooltip';
 import type { ChartDataPoint } from '@/types';
 
@@ -22,7 +22,6 @@ interface PowerLawChartProps {
   isLoading?: boolean;
 }
 
-const LOG_TICKS = [0.01, 0.1, 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000];
 
 export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProps) {
   const formatYAxis = (value: number): string => {
@@ -33,13 +32,7 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
     return `$${value.toExponential(0)}`;
   };
 
-  const formatXAxis = (dateStr: string): string => {
-    try {
-      return format(parseISO(dateStr), 'yyyy');
-    } catch {
-      return dateStr;
-    }
-  };
+  const formatXAxis = (timestamp: number): string => new Date(timestamp).getUTCFullYear().toString();
 
   // Calculate domain for Y axis
   const yDomain = useMemo((): [number, number] => {
@@ -60,7 +53,7 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
     if (isLogScale) {
       const logMin = Math.pow(10, Math.floor(Math.log10(Math.max(min, 0.01))));
       const logMax = Math.pow(10, Math.ceil(Math.log10(max)));
-      return [logMin, logMax];
+      return [logMin, Math.max(logMax, logMin * 10)];
     }
 
     return [0, max * 1.1];
@@ -68,36 +61,31 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
 
   const yTicks = useMemo(() => {
     if (!isLogScale) return undefined;
-    return LOG_TICKS.filter((t) => t >= yDomain[0] && t <= yDomain[1]);
+    const first = Math.round(Math.log10(yDomain[0]));
+    const last = Math.round(Math.log10(yDomain[1]));
+    return Array.from({ length: last - first + 1 }, (_, i) => 10 ** (first + i));
   }, [isLogScale, yDomain]);
 
   const xTicks = useMemo(() => {
     if (data.length === 0) return [];
-    // Get unique years from the data
-    const yearsSet = new Set<number>();
-    data.forEach((d) => yearsSet.add(parseInt(d.date.substring(0, 4), 10)));
-    const years = Array.from(yearsSet).sort((a, b) => a - b);
-
-    // Determine tick interval based on year range
-    let tickYears: number[];
-    if (years.length <= 10) {
-      tickYears = years;
-    } else if (years.length <= 20) {
-      tickYears = years.filter((y) => y % 2 === 0 || y === years[0] || y === years[years.length - 1]);
-    } else {
-      tickYears = years.filter((y) => y % 5 === 0 || y === years[0] || y === years[years.length - 1]);
+    const start = data[0].timestamp;
+    const end = data[data.length - 1].timestamp;
+    const firstYear = new Date(start).getUTCFullYear();
+    const lastYear = new Date(end).getUTCFullYear();
+    if (firstYear === lastYear) return [start, start + (end - start) / 2, end];
+    const step = Math.max(1, Math.ceil((lastYear - firstYear) / 8));
+    const ticks: number[] = [];
+    for (let year = firstYear; year <= lastYear; year += step) {
+      const timestamp = Date.UTC(year, 0, 1);
+      if (timestamp >= start && timestamp <= end) ticks.push(timestamp);
     }
-
-    // Find first data point for each tick year
-    return tickYears.map((year) => {
-      const match = data.find((d) => d.date.startsWith(`${year}`));
-      return match?.date || `${year}-01-01`;
-    });
+    return ticks;
   }, [data]);
 
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = utcDay().getTime();
+  const sameYear = data.length > 0 && new Date(data[0].timestamp).getUTCFullYear() === new Date(data[data.length - 1].timestamp).getUTCFullYear();
 
-  if (isLoading) {
+  if (isLoading && data.length === 0) {
     return (
       <div className="chart-container flex h-[500px] items-center justify-center">
         <div className="flex flex-col items-center gap-3">
@@ -129,10 +117,13 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
           />
 
           <XAxis
-            dataKey="date"
-            tickFormatter={formatXAxis}
+            dataKey="timestamp"
+            type="number"
+            scale="time"
+            domain={['dataMin', 'dataMax']}
+            tickFormatter={sameYear ? (time) => formatDate(time, { day: 'numeric', year: undefined }) : formatXAxis}
             ticks={xTicks}
-            interval={0}
+            interval="preserveStartEnd"
             stroke="#71717a"
             tick={{ fill: '#71717a', fontSize: 11 }}
             tickLine={{ stroke: '#71717a' }}
@@ -150,7 +141,7 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
             tickLine={{ stroke: '#71717a' }}
             axisLine={{ stroke: 'rgba(255, 255, 255, 0.05)' }}
             width={70}
-            allowDataOverflow={false}
+            allowDataOverflow={true}
           />
 
           <Tooltip
@@ -158,31 +149,19 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
             cursor={{ stroke: '#71717a', strokeDasharray: '4 4' }}
           />
 
-          {/* Resistance line (top of band) */}
+          {/* A range area leaves the grid visible below support. */}
           <Area
-            type="monotone"
-            dataKey="resistancePrice"
+            type="linear"
+            dataKey={(point: ChartDataPoint) => [point.supportPrice, point.resistancePrice]}
             stroke="rgba(251, 146, 60, 0.4)"
             strokeWidth={1}
             fill="url(#bandGradient)"
-            fillOpacity={1}
-            isAnimationActive={false}
-          />
-
-          {/* Support line (bottom of band) - fills over the resistance to create cutout effect */}
-          <Area
-            type="monotone"
-            dataKey="supportPrice"
-            stroke="rgba(251, 146, 60, 0.4)"
-            strokeWidth={1}
-            fill="#16161f"
-            fillOpacity={1}
             isAnimationActive={false}
           />
 
           {/* Power Law fair value line */}
           <Line
-            type="monotone"
+            type="linear"
             dataKey="fairPrice"
             stroke="#f7931a"
             strokeWidth={2.5}
@@ -192,17 +171,17 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
 
           {/* Actual Bitcoin price */}
           <Line
-            type="monotone"
+            type="linear"
             dataKey="actualPrice"
             stroke="#22c55e"
             strokeWidth={2}
-            dot={false}
-            connectNulls={true}
+            dot={{ r: 1, strokeWidth: 0, fill: '#22c55e' }}
+            connectNulls={false}
             isAnimationActive={false}
           />
 
           {/* Today reference line */}
-          <ReferenceLine
+          {data.length > 0 && today >= data[0].timestamp && today <= data[data.length - 1].timestamp && <ReferenceLine
             x={today}
             stroke="#71717a"
             strokeDasharray="4 4"
@@ -212,9 +191,11 @@ export function PowerLawChart({ data, isLogScale, isLoading }: PowerLawChartProp
               fontSize: 10,
               position: 'top',
             }}
-          />
+          />}
         </ComposedChart>
       </ResponsiveContainer>
+
+      <p className="mt-2 text-center text-xs text-zinc-400">Daily observations use UTC dates. Breaks in the green line indicate missing data.</p>
 
       {/* Legend */}
       <div className="mt-4 flex flex-wrap items-center justify-center gap-6 text-sm">
